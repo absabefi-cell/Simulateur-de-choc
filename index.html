@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Collision 1D avec vecteurs et énergie</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin: 8px; }
+    canvas { border: 1px solid #ccc; margin: 6px auto; display: block; }
+    .row { margin: 6px 0; font-size: 14px; }
+    .row label { display:inline-block; width:130px; text-align:right; margin-right:6px; }
+    .mini { font-size: 12px; color: #333; }
+    button { margin: 4px 6px; }
+  </style>
+</head>
+<body>
+  <h4>Collision de deux boules (1D) avec vecteurs vitesse</h4>
+
+  <!-- Animation -->
+  <canvas id="animCanvas" width="300" height="80"></canvas>
+
+  <!-- Graphe vitesses -->
+  <canvas id="graphV" width="300" height="150"></canvas>
+
+  <!-- Graphe positions -->
+  <canvas id="graphX" width="300" height="150"></canvas>
+
+  <!-- Infos -->
+  <div id="info" class="mini"></div>
+  <div id="force" class="mini"></div>
+  <div id="energy" class="mini"></div>
+
+  <!-- Barre d'énergie -->
+  <canvas id="barE" width="300" height="30"></canvas>
+
+  <!-- Contrôles -->
+  <div class="row">
+    <label for="m1">m1 (kg)</label>
+    <input type="range" id="m1" min="0.1" max="10" step="0.1" value="1">
+    <span id="m1val">1</span>
+  </div>
+  <div class="row">
+    <label for="m2">m2 (kg)</label>
+    <input type="range" id="m2" min="0.1" max="10" step="0.1" value="1">
+    <span id="m2val">1</span>
+  </div>
+  <div class="row">
+    <label for="u1">v1 init (m/s)</label>
+    <input type="range" id="u1" min="0" max="10" step="0.1" value="2">
+    <span id="u1val">2</span>
+  </div>
+  <div class="row">
+    <label for="gamma">frottement γ (s⁻¹)</label>
+    <input type="range" id="gamma" min="0" max="1.5" step="0.05" value="0.25">
+    <span id="gammaval">0.25</span>
+  </div>
+
+  <div class="row">
+    <button onclick="startSim()">LANCER</button>
+    <button onclick="resetSim()">RESET</button>
+  </div>
+
+  <script>
+  // ====== Constantes ======
+  let m1=1, m2=1, u1_init=2, gamma=0.25, e=0.9;
+  let dt=0.05, pxPerM=20, rayon=10;
+  let x1=80, x2=160, u1=0, u2=0, t=0;
+  let started=false, collisionCount=0, lastForce=null;
+  const contactTime=0.0005;
+
+  const anim = document.getElementById('animCanvas').getContext('2d');
+  const gV   = document.getElementById('graphV').getContext('2d');
+  const gX   = document.getElementById('graphX').getContext('2d');
+  const barE = document.getElementById('barE').getContext('2d');
+
+  let tData=[], v1Data=[], v2Data=[], x1Data=[], x2Data=[];
+  let Emax = 1;
+
+  // ====== Physique ======
+  function collide(m1,m2,u1,u2,e){
+    const v1 = ((m1 - e*m2)*u1 + (1+e)*m2*u2) / (m1 + m2);
+    const v2 = ((m2 - e*m1)*u2 + (1+e)*m1*u1) / (m1 + m2);
+    return [v1, v2];
+  }
+  function impactForce(m1,m2,u1,u2,e){
+    const v_rel=Math.abs(u1-u2), mu=(m1*m2)/(m1+m2);
+    const J=(1+e)*mu*v_rel;
+    return J/Math.max(contactTime,1e-6);
+  }
+
+  // ====== Sliders ======
+  document.getElementById('m1').oninput=e=>{ m1=parseFloat(e.target.value); document.getElementById('m1val').textContent=m1; };
+  document.getElementById('m2').oninput=e=>{ m2=parseFloat(e.target.value); document.getElementById('m2val').textContent=m2; };
+  document.getElementById('u1').oninput=e=>{ u1_init=parseFloat(e.target.value); document.getElementById('u1val').textContent=u1_init; };
+  document.getElementById('gamma').oninput=e=>{ gamma=parseFloat(e.target.value); document.getElementById('gammaval').textContent=gamma; };
+
+  function startSim(){ if(!started){ u1=u1_init; u2=0; started=true; Emax=0; } }
+  function resetSim(){
+    x1=80; x2=160; u1=0; u2=0; t=0; started=false;
+    collisionCount=0; lastForce=null; Emax=1;
+    tData=[]; v1Data=[]; v2Data=[]; x1Data=[]; x2Data=[];
+    draw();
+  }
+
+  // ====== Boucle ======
+  function loop(){
+    if(started){
+      // 1) Collision
+      if(u1 > u2 && (x2 - x1) <= 2*rayon){
+        lastForce=impactForce(m1,m2,u1,u2,e);
+        [u1,u2]=collide(m1,m2,u1,u2,e);
+        const mid=(x1+x2)/2;
+        x1=mid-rayon; x2=mid+rayon;
+        collisionCount++;
+      }
+      // 2) Frottement
+      const decay=Math.exp(-gamma*dt);
+      u1*=decay; u2*=decay;
+      // 3) Déplacement
+      x1+=(u1*dt)*pxPerM; x2+=(u2*dt)*pxPerM; t+=dt;
+      // 4) Murs
+      if(x1<=rayon||x1>=300-rayon){ u1=-u1; x1=Math.max(rayon,Math.min(300-rayon,x1)); }
+      if(x2<=rayon||x2>=300-rayon){ u2=-u2; x2=Math.max(rayon,Math.min(300-rayon,x2)); }
+      // 5) Données
+      tData.push(t); v1Data.push(u1); v2Data.push(u2); x1Data.push(x1/pxPerM); x2Data.push(x2/pxPerM);
+      const tWin=20;
+      while(tData.length&&(t-tData[0])>tWin){
+        tData.shift(); v1Data.shift(); v2Data.shift(); x1Data.shift(); x2Data.shift();
+      }
+    }
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ====== Dessin ======
+  function drawVector(ctx, x, y, v, color){
+    const scale = 10;
+    const len = v*scale;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x+len, y);
+    ctx.strokeStyle=color;
+    ctx.lineWidth=2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x+len, y);
+    ctx.lineTo(x+len-4*Math.sign(v), y-4);
+    ctx.lineTo(x+len-4*Math.sign(v), y+4);
+    ctx.closePath();
+    ctx.fillStyle=color;
+    ctx.fill();
+  }
+
+  function plot(ctx,tData,yData,color,left,midY,yScale){
+    if(tData.length<2) return;
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=1.5;
+    const t0=tData[0];
+    for(let i=0;i<tData.length;i++){
+      const x=left+(tData[i]-t0)*12;
+      const y=midY-yData[i]*yScale;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  function drawAxes(ctx,W,H,left,midY,label){
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle="#000";
+    ctx.beginPath();
+    ctx.moveTo(left,0); ctx.lineTo(left,H);
+    ctx.moveTo(0,midY); ctx.lineTo(W,midY);
+    ctx.stroke();
+    ctx.fillStyle="#333"; ctx.font="10px Arial";
+    ctx.fillText(label, 2, 10);
+  }
+
+  function draw(){
+    // Animation
+    anim.clearRect(0,0,300,80);
+    anim.beginPath(); anim.arc(x1,40,rayon,0,2*Math.PI); anim.fillStyle="#3178C6"; anim.fill();
+    anim.beginPath(); anim.arc(x2,40,rayon,0,2*Math.PI); anim.fillStyle="#DC413C"; anim.fill();
+    drawVector(anim, x1, 70, u1, "#3178C6");
+    drawVector(anim, x2, 70, u2, "#DC413C");
+
+    // Graphe vitesses
+    drawAxes(gV,300,150,30,75,"Vitesse (m/s)");
+    let vmax=1; for(let i=0;i<v1Data.length;i++){ vmax=Math.max(vmax,Math.abs(v1Data[i]),Math.abs(v2Data[i])); }
+    const yScaleV = 60 / vmax;
+    plot(gV, tData, v1Data, "#3178C6", 30, 75, yScaleV);
+    plot(gV, tData, v2Data, "#DC413C", 30, 75, yScaleV);
+
+    // Graphe positions
+    drawAxes(gX,300,150,30,75,"Position (m)");
+    const yScaleX = 10;
+    plot(gX, tData, x1Data, "#3178C6", 30, 75, yScaleX);
+    plot(gX, tData, x2Data, "#DC413C", 30, 75, yScaleX);
+
+    // Infos numériques
+    const E = 0.5*m1*u1*u1 + 0.5*m2*u2*u2;
+    if(E > Emax) Emax = E;
+    document.getElementById('info').textContent =
+      `m1=${m1.toFixed(2)} kg  m2=${m2.toFixed(2)} kg  v1=${u1.toFixed(2)} m/s  v2=${u2.toFixed(2)} m/s  chocs=${collisionCount}`;
+    document.getElementById('force').textContent =
+      `Force du choc ≈ ${lastForce ? lastForce.toFixed(0) : '-'} N`;
+    document.getElementById('energy').textContent =
+      `Énergie cinétique totale = ${E.toFixed(2)} J`;
+
+    // Barre d'énergie
+    barE.clearRect(0,0,300,30);
+    barE.strokeStyle = "#000";
+    barE.strokeRect(10,5,280,20);
+    const w = (E/Emax)*280;
+    barE.fillStyle = "#2ecc71";
+    barE.fillRect(10,5,w,20);
+  }
+
+  // Lancer
+  resetSim();
+  requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
