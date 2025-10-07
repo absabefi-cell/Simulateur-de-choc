@@ -1,2 +1,2 @@
 # Simulateur-de-choc
-Visualiser un choc elasqtiue et la force et énergie  
+Visualiser un choc entre deux bouled avec calcul de la force de l'énergie  
